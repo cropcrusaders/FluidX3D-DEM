@@ -534,6 +534,7 @@ public:
 		return relative_position(x, y, z);
 	}
 	void write_status(const string& path=""); // write LBM status report to a .txt file
+	void write_velocity_binary(const string& path, const float si_spacing); // export velocity field in binary format for DEM coupling (header + ux,uy,uz float arrays)
 
 	void voxelize_mesh_on_device(const Mesh* mesh, const uchar flag=TYPE_S, const float3& rotation_center=float3(0.0f), const float3& linear_velocity=float3(0.0f), const float3& rotational_velocity=float3(0.0f)); // voxelize mesh
 	void unvoxelize_mesh_on_device(const Mesh* mesh, const uchar flag=TYPE_S); // remove voxelized triangle mesh from LBM grid

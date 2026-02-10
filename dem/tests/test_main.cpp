@@ -545,6 +545,57 @@ void test_inertia() {
     CHECK_NEAR(Ie.x, 0.2 * 0.001 * (0.004*0.004 + 0.003*0.003), 1e-12, "ellipsoid Ixx");
 }
 
+// ─── Test: Two-way coupling (init_grid, update_from_arrays, force distribution)
+
+void test_twoway_coupling() {
+    std::cout << "Test: two-way coupling (airflow grid update + force feedback)\n";
+    using namespace dem;
+
+    // Create a small 4x4x4 airflow grid
+    AirflowField field;
+    field.init_grid(4, 4, 4, {0, 0, 0}, 0.01);  // 10mm cells, origin at (0,0,0)
+    CHECK(field.is_loaded(), "init_grid creates loaded field");
+    CHECK(field.nx == 4 && field.ny == 4 && field.nz == 4, "init_grid dimensions");
+
+    // Fill with uniform velocity (1 m/s in z-direction)
+    size_t total = 4 * 4 * 4;
+    std::vector<float> ux_data(total, 0.0f);
+    std::vector<float> uy_data(total, 0.0f);
+    std::vector<float> uz_data(total, 2.0f);
+    field.update_from_arrays(ux_data.data(), uy_data.data(), uz_data.data());
+
+    // Interpolate at center of grid: should get (0, 0, 2)
+    vec3 center = {0.015, 0.015, 0.015};  // center of 4x4x4 grid with 10mm spacing
+    vec3 vel = field.interpolate_velocity(center);
+    CHECK_NEAR(vel.x, 0.0, 1e-6, "updated field vel.x");
+    CHECK_NEAR(vel.z, 2.0, 1e-6, "updated field vel.z");
+
+    // Test force distribution: single particle at grid center
+    AirflowField::ParticleDrag pd;
+    pd.pos = center;
+    pd.drag = {0, 0, 1.0};  // 1N drag in z-direction
+    pd.radius = 0.005;
+
+    std::vector<float> fx(total, 0.0f), fy(total, 0.0f), fz(total, 0.0f);
+    field.distribute_forces_to_grid({pd}, fx.data(), fy.data(), fz.data());
+
+    // Reaction force is -drag, so fz should be negative (reaction = -1N in z)
+    // Sum of all fz entries * cell_volume should equal -1.0 N
+    double cell_vol = 0.01 * 0.01 * 0.01;  // 10mm^3
+    double total_fz = 0.0;
+    for (size_t i = 0; i < total; i++) total_fz += fz[i] * cell_vol;
+    CHECK_NEAR(total_fz, -1.0, 1e-6, "force feedback conserves total force");
+
+    // fx and fy should sum to zero (drag was only in z)
+    double total_fx = 0.0, total_fy = 0.0;
+    for (size_t i = 0; i < total; i++) {
+        total_fx += fx[i] * cell_vol;
+        total_fy += fy[i] * cell_vol;
+    }
+    CHECK_NEAR(total_fx, 0.0, 1e-10, "no spurious fx feedback");
+    CHECK_NEAR(total_fy, 0.0, 1e-10, "no spurious fy feedback");
+}
+
 // ─── Main ───────────────────────────────────────────────────────────────────
 
 int main() {
@@ -566,6 +617,7 @@ int main() {
     test_restitution();
     test_friction_incline();
     test_energy_conservation();
+    test_twoway_coupling();
 
     std::cout << "\n═══════════════════════════════════════════════════\n"
               << "  Results: " << tests_passed << " passed, "

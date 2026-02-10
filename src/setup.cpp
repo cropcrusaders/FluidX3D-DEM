@@ -1364,3 +1364,45 @@ void main_setup() { // benchmark; required extensions in defines.hpp: BENCHMARK,
 	lbm.run();
 	//lbm.run(1000u); lbm.u.read_from_device(); println(lbm.u.x[lbm.index(Nx/2u, Ny/2u, Nz/2u)]); wait(); // test for binary identity
 } /**/
+
+
+
+/*void main_setup() { // cotton harvester shoot airflow for DEM coupling; required extensions in defines.hpp: VOLUME_FORCE
+	// ################################################################## define simulation box size, viscosity and volume force ###################################################################
+	// Cotton harvester shoot: vertical cylindrical duct, 50mm diameter, 400mm long
+	// Air is drawn downward through the shoot by suction (vacuum fan below)
+	// Typical suction velocity: 5-15 m/s in cotton harvesters
+	const float si_D = 0.050f; // tube inner diameter (m)
+	const float si_L = 0.400f; // tube length (m)
+	const float si_u_avg = 8.0f; // average air velocity through shoot (m/s)
+	const float si_rho = 1.225f; // air density (kg/m^3)
+	const float si_nu = 1.516e-5f; // air kinematic viscosity (m^2/s) at 20C
+	const float si_Re = si_u_avg*si_D/si_nu; // Reynolds number ~26000 (turbulent)
+
+	const float D = 64.0f; // tube diameter in lattice units (resolution)
+	const float L = D*si_L/si_D; // tube length in lattice units = 512
+	const float u_lbm = 0.05f; // characteristic LBM velocity (keep < 0.1 for stability)
+
+	units.set_m_kg_s(D, u_lbm, 1.0f, si_D, si_u_avg, si_rho);
+	const float nu = units.nu_from_Re(si_Re, D, u_lbm);
+	const float R = 0.5f*D; // tube radius in lattice units
+	const float f = units.f_from_u_Poiseuille_3D(u_lbm, 1.0f, nu, R); // body force to drive Poiseuille flow in cylinder
+
+	const uint Nx_box = to_uint(D)+4u; // add margin around tube
+	const uint Ny_box = to_uint(L);
+	const uint Nz_box = Nx_box;
+	LBM lbm(Nx_box, Ny_box, Nz_box, nu, 0.0f, -f, 0.0f); // force in -y direction (downward through shoot)
+	// ###################################################################################### define geometry ######################################################################################
+	const uint Nx=lbm.get_Nx(), Ny=lbm.get_Ny(), Nz=lbm.get_Nz(); parallel_for(lbm.get_N(), [&](ulong n) { uint x=0u, y=0u, z=0u; lbm.coordinates(n, x, y, z);
+		// Cylindrical tube wall: cells outside cylinder radius are solid
+		if(!cylinder(x, y, z, lbm.center(), float3(0u, Ny, 0u), R)) {
+			lbm.flags[n] = TYPE_S; // solid wall
+		}
+		// y-direction is periodic (flow driven by volume force)
+	}); // ####################################################################### run simulation, export images and data ##########################################################################
+	const float si_spacing = units.si_x(1.0f); // physical size of one lattice cell
+	const ulong convergence_steps = units.t(1.0f); // simulate ~1 second for convergence
+	lbm.run(convergence_steps); // let flow develop
+	lbm.write_velocity_binary(get_exe_path()+"../dem/data/cotton_shoot_velocity.bin", si_spacing); // export for DEM
+	print_info("Cotton shoot airflow exported. Re="+to_string(to_uint(si_Re))+", u_avg="+to_string(si_u_avg)+" m/s, D="+to_string(si_D*1000.0f, 1u)+" mm");
+} /**/

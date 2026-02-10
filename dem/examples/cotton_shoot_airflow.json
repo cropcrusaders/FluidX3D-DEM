@@ -1,0 +1,100 @@
+{
+    "simulation": {
+        "dt": 2e-5,
+        "max_time": 3.0,
+        "gravity": [0, 0, -9.81],
+        "auto_dt": true,
+        "dt_safety": 0.1,
+        "rng_seed": 42,
+        "output_dir": "output/cotton_shoot_airflow",
+        "output_interval": 5000,
+        "save_trajectories": true,
+        "max_trajectory_particles": 50,
+        "trajectory_sample_interval": 0.001,
+        "tube_axis": [0, 0, -1]
+    },
+
+    "seed_types": [
+        {
+            "name": "cotton_boll",
+            "shape": "ellipsoid",
+            "a": 0.006,
+            "b": 0.004,
+            "c": 0.004,
+            "mass": 0.002,
+            "_comment": "Cotton boll fragment: ~12mm long, ~8mm wide, ~2g"
+        },
+        {
+            "name": "cotton_lock",
+            "shape": "sphere",
+            "radius": 0.005,
+            "mass": 0.0008,
+            "_comment": "Cotton lock (fluffy fiber cluster): ~10mm diameter, ~0.8g"
+        }
+    ],
+
+    "contact": {
+        "seed_seed": {
+            "kn": 5000,
+            "kt": 1250,
+            "restitution": 0.25,
+            "friction": 0.5,
+            "rolling_friction": 0.02,
+            "_comment": "Cotton is soft, deformable, high friction, low bounce"
+        },
+        "seed_wall": {
+            "kn": 8000,
+            "kt": 2000,
+            "restitution": 0.15,
+            "friction": 0.4,
+            "rolling_friction": 0.02,
+            "_comment": "Cotton on sheet metal: very low bounce, moderate friction"
+        }
+    },
+
+    "geometry": {
+        "primitives": [
+            {
+                "type": "cylinder",
+                "center": [0, 0, 0.20],
+                "axis": [0, 0, -1],
+                "length": 0.40,
+                "radius": 0.025,
+                "_comment": "Vertical shoot: 50mm diameter, 400mm long, centered at z=0..0.40"
+            }
+        ]
+    },
+
+    "injector": {
+        "position": [0, 0, 0.39],
+        "direction": [0, 0, -1],
+        "seeds_per_second": 40,
+        "max_seeds": 200,
+        "aperture_shape": "circular",
+        "aperture_radius": 0.012,
+        "initial_speed": 0.5,
+        "speed_stddev": 0.15,
+        "lateral_speed_stddev": 0.05,
+        "seed_type_idx": 0,
+        "_comment": "Cotton enters at top of shoot, dragged down by airflow"
+    },
+
+    "exit_plane": {
+        "point": [0, 0, 0.005],
+        "normal": [0, 0, 1]
+    },
+
+    "airflow": {
+        "enabled": true,
+        "path": "data/cotton_shoot_velocity.bin",
+        "format": "binary",
+        "drag_Cd": 0.9,
+        "schiller_naumann": true,
+        "air_density": 1.225,
+        "grid": {
+            "origin": [-0.025, -0.200, -0.025],
+            "spacing": 0.00078125
+        },
+        "_comment": "LBM velocity field from FluidX3D cotton shoot setup. Grid origin and spacing must match the LBM export. Spacing = si_D / D_lattice = 0.050/64 = 0.00078125 m. Origin is -Nx/2*spacing for each axis."
+    }
+}
