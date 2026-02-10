@@ -1038,6 +1038,41 @@ void LBM::write_status(const string& path) { // write LBM status report to a .tx
 	write_file(filename, status);
 }
 
+void LBM::write_velocity_binary(const string& path, const float si_spacing) { // export velocity field in binary format for DEM coupling
+	u.read_from_device();
+	const string filename = create_file_extension(path.empty() ? default_filename("velocity_field", ".bin", get_t()) : path, ".bin");
+	create_folder(filename);
+	std::ofstream file(filename, std::ios::out|std::ios::binary);
+	// Header: nx,ny,nz (int32), origin x,y,z (double), spacing (double)
+	const int32_t dims[3] = { (int32_t)Nx, (int32_t)Ny, (int32_t)Nz };
+	file.write(reinterpret_cast<const char*>(dims), sizeof(dims));
+	const double origin[3] = { // grid origin: center the grid in world space
+		-0.5*(double)Nx*(double)si_spacing,
+		-0.5*(double)Ny*(double)si_spacing,
+		-0.5*(double)Nz*(double)si_spacing
+	};
+	file.write(reinterpret_cast<const char*>(origin), sizeof(origin));
+	const double sp = (double)si_spacing;
+	file.write(reinterpret_cast<const char*>(&sp), sizeof(sp));
+	// Velocity data: convert to SI units and write ux, uy, uz arrays
+	const float u_conv = units.si_u(1.0f); // LBM-to-SI velocity conversion factor
+	const ulong N = get_N();
+	std::vector<float> buf(N);
+	// ux
+	for(ulong n=0ull; n<N; n++) buf[n] = u.x[n]*u_conv;
+	file.write(reinterpret_cast<const char*>(buf.data()), N*sizeof(float));
+	// uy
+	for(ulong n=0ull; n<N; n++) buf[n] = u.y[n]*u_conv;
+	file.write(reinterpret_cast<const char*>(buf.data()), N*sizeof(float));
+	// uz
+	for(ulong n=0ull; n<N; n++) buf[n] = u.z[n]*u_conv;
+	file.write(reinterpret_cast<const char*>(buf.data()), N*sizeof(float));
+	file.close();
+	info.allow_printing.lock();
+	print_info("Velocity field \""+filename+"\" saved ("+to_string(Nx)+"x"+to_string(Ny)+"x"+to_string(Nz)+", spacing="+to_string(si_spacing*1000.0f, 3u)+" mm).");
+	info.allow_printing.unlock();
+}
+
 void LBM::voxelize_mesh_on_device(const Mesh* mesh, const uchar flag, const float3& rotation_center, const float3& linear_velocity, const float3& rotational_velocity) { // voxelize triangle mesh
 	if(get_D()==1u) {
 		lbm_domain[0]->voxelize_mesh_on_device(mesh, flag, rotation_center, linear_velocity, rotational_velocity); // if this crashes on Windows, create a TdrDelay 32-bit DWORD with decimal value 300 in Computer\HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\GraphicsDrivers
