@@ -140,7 +140,7 @@ void CollisionDetector::detect(ParticleSystem& psys) {
                 WallContact wc;
                 wc.idx = (uint32_t)i;
                 wc.contact_point = result.contact_point;
-                wc.contact_normal = result.contact_normal;
+                wc.normal = result.contact_normal;
                 wc.overlap = result.penetration;
                 wall_contacts_.push_back(wc);
             }

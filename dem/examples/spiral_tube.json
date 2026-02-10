@@ -6,7 +6,7 @@
         "auto_dt": true,
         "dt_safety": 0.1,
         "rng_seed": 12345,
-        "output_dir": "output/spiral_tube",
+        "output_dir": "output/funnel_tube",
         "output_interval": 5000,
         "save_trajectories": true,
         "max_trajectory_particles": 50,
@@ -43,14 +43,13 @@
     "geometry": {
         "primitives": [
             {
-                "type": "spiral_insert",
+                "type": "cone",
                 "center": [0, 0, 0],
                 "axis": [0, 0, 1],
                 "length": 0.30,
-                "radius": 0.025,
-                "spiral_pitch": 0.05,
-                "spiral_height": 0.015,
-                "spiral_turns": 3
+                "radius_top": 0.035,
+                "radius_bottom": 0.018,
+                "_comment": "Funnel tube: 35mm at top, 18mm at bottom. Seeds are forced through narrowing passage."
             }
         ]
     },
