@@ -80,6 +80,14 @@ public:
     std::function<void(uint64_t step, double time, int n_particles)> on_step;
     std::function<void(const Particle&)> on_exit;
 
+    // Two-way coupling: per-particle drag forces from last compute_forces() call
+    // Populated when enable_airflow is true; use for feeding reaction forces back to LBM
+    std::vector<AirflowField::ParticleDrag> last_drag_forces;
+
+    // Two-way coupling helper: compute forces and return drag forces separately
+    // Call this instead of step() when you need the drag forces for feedback
+    void step_twoway();
+
 private:
     double time_ = 0.0;
     uint64_t step_count_ = 0;

@@ -212,4 +212,98 @@ double AirflowField::schiller_naumann_Cd(double Re) {
     return 0.44;  // Newton regime
 }
 
+// ─── Two-way coupling methods ─────────────────────────────────────────────
+
+void AirflowField::init_grid(int nx_, int ny_, int nz_, const vec3& origin_, double spacing_) {
+    nx = nx_; ny = ny_; nz = nz_;
+    origin = origin_;
+    spacing = spacing_;
+    size_t total = (size_t)nx * ny * nz;
+    ux.assign(total, 0.0f);
+    uy.assign(total, 0.0f);
+    uz.assign(total, 0.0f);
+    density.assign(total, (float)rho_fluid);
+}
+
+void AirflowField::update_from_arrays(const float* ux_data, const float* uy_data, const float* uz_data) {
+    size_t total = (size_t)nx * ny * nz;
+    if (total == 0) return;
+    std::memcpy(ux.data(), ux_data, total * sizeof(float));
+    std::memcpy(uy.data(), uy_data, total * sizeof(float));
+    std::memcpy(uz.data(), uz_data, total * sizeof(float));
+}
+
+void AirflowField::distribute_force_to_grid(const ParticleDrag& pd,
+                                              float* fx_out, float* fy_out, float* fz_out) const {
+    if (nx <= 0 || ny <= 0 || nz <= 0) return;
+
+    double gx, gy, gz;
+    world_to_grid(pd.pos, gx, gy, gz);
+
+    // Bounds check -- particle must be within grid
+    if (gx < -0.5 || gx > nx - 0.5 || gy < -0.5 || gy > ny - 0.5 || gz < -0.5 || gz > nz - 0.5)
+        return;
+
+    // Reaction force on fluid = -drag on particle (Newton's 3rd law)
+    vec3 reaction = -pd.drag;
+
+    // Convert force to force-per-volume for LBM: F_vol = F / cell_volume
+    double cell_vol = spacing * spacing * spacing;
+    vec3 f_vol = reaction / cell_vol;
+
+    // Trilinear distribution to 8 surrounding cells
+    int ix = (int)std::floor(gx);
+    int iy = (int)std::floor(gy);
+    int iz = (int)std::floor(gz);
+    double fx = gx - ix;
+    double fy = gy - iy;
+    double fz = gz - iz;
+
+    auto clamp_idx = [](int i, int max_val) -> int {
+        return std::max(0, std::min(i, max_val - 1));
+    };
+
+    int x0 = clamp_idx(ix, nx), x1 = clamp_idx(ix + 1, nx);
+    int y0 = clamp_idx(iy, ny), y1 = clamp_idx(iy + 1, ny);
+    int z0 = clamp_idx(iz, nz), z1 = clamp_idx(iz + 1, nz);
+
+    // 8 trilinear weights
+    double w[8] = {
+        (1-fx)*(1-fy)*(1-fz),  // (x0,y0,z0)
+        (  fx)*(1-fy)*(1-fz),  // (x1,y0,z0)
+        (1-fx)*(  fy)*(1-fz),  // (x0,y1,z0)
+        (  fx)*(  fy)*(1-fz),  // (x1,y1,z0)
+        (1-fx)*(1-fy)*(  fz),  // (x0,y0,z1)
+        (  fx)*(1-fy)*(  fz),  // (x1,y0,z1)
+        (1-fx)*(  fy)*(  fz),  // (x0,y1,z1)
+        (  fx)*(  fy)*(  fz),  // (x1,y1,z1)
+    };
+    int idx_arr[8] = {
+        x0 + nx*(y0 + ny*z0), x1 + nx*(y0 + ny*z0),
+        x0 + nx*(y1 + ny*z0), x1 + nx*(y1 + ny*z0),
+        x0 + nx*(y0 + ny*z1), x1 + nx*(y0 + ny*z1),
+        x0 + nx*(y1 + ny*z1), x1 + nx*(y1 + ny*z1),
+    };
+
+    for (int i = 0; i < 8; i++) {
+        fx_out[idx_arr[i]] += (float)(f_vol.x * w[i]);
+        fy_out[idx_arr[i]] += (float)(f_vol.y * w[i]);
+        fz_out[idx_arr[i]] += (float)(f_vol.z * w[i]);
+    }
+}
+
+void AirflowField::distribute_forces_to_grid(const std::vector<ParticleDrag>& drags,
+                                               float* fx_out, float* fy_out, float* fz_out) const {
+    size_t total = (size_t)nx * ny * nz;
+    if (total == 0) return;
+    // Zero the output arrays
+    std::memset(fx_out, 0, total * sizeof(float));
+    std::memset(fy_out, 0, total * sizeof(float));
+    std::memset(fz_out, 0, total * sizeof(float));
+    // Accumulate each particle's contribution
+    for (const auto& pd : drags) {
+        distribute_force_to_grid(pd, fx_out, fy_out, fz_out);
+    }
+}
+
 } // namespace dem

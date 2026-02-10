@@ -1,0 +1,98 @@
+{
+    "_comment": "Cotton harvester door-block scenario: cotton piles up at a baffle constriction. Use with coupled_sim for two-way LBM-DEM coupling, or standalone with a pre-computed velocity field.",
+
+    "simulation": {
+        "dt": 2e-5,
+        "max_time": 5.0,
+        "gravity": [0, 0, -9.81],
+        "auto_dt": true,
+        "dt_safety": 0.1,
+        "rng_seed": 42,
+        "output_dir": "output/door_block",
+        "output_interval": 5000,
+        "save_trajectories": true,
+        "max_trajectory_particles": 50,
+        "trajectory_sample_interval": 0.002,
+        "tube_axis": [0, 0, -1]
+    },
+
+    "seed_types": [
+        {
+            "name": "cotton_boll",
+            "shape": "sphere",
+            "radius": 0.005,
+            "mass": 0.002,
+            "_comment": "Cotton boll fragment: 10mm diameter, 2g"
+        }
+    ],
+
+    "contact": {
+        "seed_seed": {
+            "kn": 5000,
+            "kt": 1250,
+            "restitution": 0.25,
+            "friction": 0.5,
+            "rolling_friction": 0.02,
+            "_comment": "Soft cotton: low stiffness, low bounce, high friction"
+        },
+        "seed_wall": {
+            "kn": 8000,
+            "kt": 2000,
+            "restitution": 0.15,
+            "friction": 0.4,
+            "rolling_friction": 0.02
+        }
+    },
+
+    "geometry": {
+        "primitives": [
+            {
+                "type": "cylinder",
+                "center": [0, 0, 0.20],
+                "axis": [0, 0, -1],
+                "length": 0.40,
+                "radius": 0.025,
+                "_comment": "Vertical shoot: 50mm diameter, 400mm long"
+            },
+            {
+                "type": "plane",
+                "center": [0, 0, 0.14],
+                "plane_normal": [0, 0, 1],
+                "plane_offset": 0.14,
+                "_comment": "Baffle plate at 35% from bottom - cotton piles up here"
+            }
+        ]
+    },
+
+    "injector": {
+        "position": [0, 0, 0.38],
+        "direction": [0, 0, -1],
+        "seeds_per_second": 30,
+        "max_seeds": 300,
+        "aperture_shape": "circular",
+        "aperture_radius": 0.015,
+        "initial_speed": 0.5,
+        "speed_stddev": 0.1,
+        "lateral_speed_stddev": 0.05,
+        "seed_type_idx": 0
+    },
+
+    "exit_plane": {
+        "point": [0, 0, 0.005],
+        "normal": [0, 0, 1]
+    },
+
+    "airflow": {
+        "enabled": true,
+        "path": "data/door_block_velocity.bin",
+        "format": "binary",
+        "drag_Cd": 0.9,
+        "schiller_naumann": true,
+        "air_density": 1.225,
+        "grid": {
+            "origin": [-0.027, -0.200, -0.027],
+            "spacing": 0.00104
+        },
+        "_comment": "For two-way coupling, use coupled_sim instead of dem_sim. The coupled driver updates this field live from LBM each timestep."
+    }
+}

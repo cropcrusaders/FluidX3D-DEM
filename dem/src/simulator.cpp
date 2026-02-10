@@ -237,7 +237,8 @@ void Simulator::compute_forces() {
         }
     }
 
-    // Aero forces (one-way coupling from LBM field)
+    // Aero forces (one-way or two-way coupling from LBM field)
+    last_drag_forces.clear();
     if (config.enable_airflow && airflow.is_loaded()) {
         for (auto& p : parts) {
             if (!p.active) continue;
@@ -258,8 +259,19 @@ void Simulator::compute_forces() {
             vec3 Fd = AirflowField::compute_drag(fluid_vel, p.vel,
                                                    config.air_density, Cd, r);
             p.force += Fd;
+
+            // Store drag for two-way coupling feedback
+            last_drag_forces.push_back({p.pos, Fd, r});
         }
     }
+}
+
+void Simulator::step_twoway() {
+    // Same as step(), but designed for two-way coupled loops.
+    // After calling this, read last_drag_forces to get the reaction forces
+    // that should be applied back to the LBM fluid.
+    step();
+    // last_drag_forces is already populated by compute_forces()
 }
 
 void Simulator::integrate() {
