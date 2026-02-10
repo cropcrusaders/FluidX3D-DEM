@@ -1,0 +1,78 @@
+{
+    "simulation": {
+        "dt": 1e-5,
+        "max_time": 2.0,
+        "gravity": [0, 0, -9.81],
+        "auto_dt": true,
+        "dt_safety": 0.1,
+        "rng_seed": 12345,
+        "output_dir": "output/curved_tube",
+        "output_interval": 5000,
+        "save_trajectories": true,
+        "max_trajectory_particles": 50,
+        "trajectory_sample_interval": 0.0005,
+        "tube_axis": [0, 0, -1]
+    },
+
+    "seed_types": [
+        {
+            "name": "corn",
+            "shape": "sphere",
+            "radius": 0.005,
+            "mass": 0.003
+        }
+    ],
+
+    "contact": {
+        "seed_seed": {
+            "kn": 15000,
+            "kt": 3750,
+            "restitution": 0.50,
+            "friction": 0.45,
+            "rolling_friction": 0.01
+        },
+        "seed_wall": {
+            "kn": 20000,
+            "kt": 5000,
+            "restitution": 0.30,
+            "friction": 0.35,
+            "rolling_friction": 0.01
+        }
+    },
+
+    "geometry": {
+        "primitives": [
+            {
+                "type": "bent_cylinder",
+                "center": [0, 0, 0.30],
+                "bend_radius": 0.573,
+                "bend_angle": 0.5236,
+                "radius": 0.030,
+                "_comment": "Single 30-degree bent tube, entry at top (0,0,0.30), exit near (0.077,0,0.013)"
+            }
+        ]
+    },
+
+    "injector": {
+        "position": [0, 0, 0.295],
+        "direction": [0, 0, -1],
+        "seeds_per_second": 40,
+        "max_seeds": 500,
+        "aperture_shape": "circular",
+        "aperture_radius": 0.018,
+        "initial_speed": 0.3,
+        "speed_stddev": 0.05,
+        "lateral_speed_stddev": 0.01,
+        "seed_type_idx": 0
+    },
+
+    "exit_plane": {
+        "point": [0, 0, 0.015],
+        "normal": [0, 0, 1]
+    },
+
+    "airflow": {
+        "enabled": false,
+        "drag_Cd": 0.9
+    }
+}

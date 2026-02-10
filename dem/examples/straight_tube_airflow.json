@@ -1,0 +1,85 @@
+{
+    "simulation": {
+        "dt": 1e-5,
+        "max_time": 2.0,
+        "gravity": [0, 0, -9.81],
+        "auto_dt": true,
+        "dt_safety": 0.1,
+        "rng_seed": 12345,
+        "output_dir": "output/straight_tube_airflow",
+        "output_interval": 5000,
+        "save_trajectories": true,
+        "max_trajectory_particles": 50,
+        "trajectory_sample_interval": 0.001,
+        "tube_axis": [0, 0, -1]
+    },
+
+    "seed_types": [
+        {
+            "name": "cotton",
+            "shape": "sphere",
+            "radius": 0.004,
+            "mass": 0.0008
+        }
+    ],
+
+    "contact": {
+        "seed_seed": {
+            "kn": 10000,
+            "kt": 2500,
+            "restitution": 0.45,
+            "friction": 0.5,
+            "rolling_friction": 0.01
+        },
+        "seed_wall": {
+            "kn": 15000,
+            "kt": 3750,
+            "restitution": 0.35,
+            "friction": 0.4,
+            "rolling_friction": 0.01
+        }
+    },
+
+    "geometry": {
+        "primitives": [
+            {
+                "type": "cylinder",
+                "center": [0, 0, 0],
+                "axis": [0, 0, 1],
+                "length": 0.30,
+                "radius": 0.025
+            }
+        ]
+    },
+
+    "injector": {
+        "position": [0, 0, 0.295],
+        "direction": [0, 0, -1],
+        "seeds_per_second": 50,
+        "max_seeds": 500,
+        "aperture_shape": "circular",
+        "aperture_radius": 0.015,
+        "initial_speed": 0.5,
+        "speed_stddev": 0.1,
+        "lateral_speed_stddev": 0.02,
+        "seed_type_idx": 0
+    },
+
+    "exit_plane": {
+        "point": [0, 0, 0.005],
+        "normal": [0, 0, 1]
+    },
+
+    "airflow": {
+        "enabled": true,
+        "path": "data/velocity_field.bin",
+        "format": "binary",
+        "drag_Cd": 0.9,
+        "schiller_naumann": false,
+        "air_density": 1.225,
+        "grid": {
+            "origin": [-0.05, -0.05, -0.05],
+            "spacing": 0.001
+        }
+    }
+}

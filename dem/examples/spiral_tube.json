@@ -1,0 +1,79 @@
+{
+    "simulation": {
+        "dt": 1e-5,
+        "max_time": 2.0,
+        "gravity": [0, 0, -9.81],
+        "auto_dt": true,
+        "dt_safety": 0.1,
+        "rng_seed": 12345,
+        "output_dir": "output/funnel_tube",
+        "output_interval": 5000,
+        "save_trajectories": true,
+        "max_trajectory_particles": 50,
+        "trajectory_sample_interval": 0.001,
+        "tube_axis": [0, 0, -1]
+    },
+
+    "seed_types": [
+        {
+            "name": "mung",
+            "shape": "sphere",
+            "radius": 0.003,
+            "mass": 0.0005
+        }
+    ],
+
+    "contact": {
+        "seed_seed": {
+            "kn": 8000,
+            "kt": 2000,
+            "restitution": 0.55,
+            "friction": 0.4,
+            "rolling_friction": 0.01
+        },
+        "seed_wall": {
+            "kn": 12000,
+            "kt": 3000,
+            "restitution": 0.30,
+            "friction": 0.35,
+            "rolling_friction": 0.01
+        }
+    },
+
+    "geometry": {
+        "primitives": [
+            {
+                "type": "cone",
+                "center": [0, 0, 0],
+                "axis": [0, 0, 1],
+                "length": 0.30,
+                "radius_top": 0.035,
+                "radius_bottom": 0.018,
+                "_comment": "Funnel tube: 35mm at top, 18mm at bottom. Seeds are forced through narrowing passage."
+            }
+        ]
+    },
+
+    "injector": {
+        "position": [0, 0, 0.295],
+        "direction": [0, 0, -1],
+        "seeds_per_second": 60,
+        "max_seeds": 500,
+        "aperture_shape": "circular",
+        "aperture_radius": 0.012,
+        "initial_speed": 0.4,
+        "speed_stddev": 0.08,
+        "lateral_speed_stddev": 0.015,
+        "seed_type_idx": 0
+    },
+
+    "exit_plane": {
+        "point": [0, 0, 0.005],
+        "normal": [0, 0, 1]
+    },
+
+    "airflow": {
+        "enabled": false,
+        "drag_Cd": 0.9
+    }
+}

@@ -1,0 +1,8 @@
+build/
+output/
+*.o
+*.a
+dem_sim
+dem_tests
+__pycache__/
+*.pyc
