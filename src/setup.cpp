@@ -52,6 +52,7 @@ void main_setup() { // Integrated DEM-LBM: particles in channel flow; required e
 	const float spacing = units.si_x(1.0f);       // meters per cell
 	const float u_conv = units.si_u(1.0f);         // (m/s) per lattice velocity unit
 	const float dt_lbm_si = units.si_t(1ull);      // seconds per LBM timestep
+	const float f_conv = units.f(1.0f);            // SI force-per-volume to LBM units
 
 	// ###################################################################################### define LBM geometry ######################################################################################
 	const uint Nx=lbm.get_Nx(), Ny=lbm.get_Ny(), Nz=lbm.get_Nz();
@@ -132,8 +133,9 @@ void main_setup() { // Integrated DEM-LBM: particles in channel flow; required e
 	);
 	dem.sim.exit_plane.normal = dem::vec3(-1.0, 0.0, 0.0); // particles exit when crossing in +x direction
 
-	// Initialize DEM coupling
-	dem.init(Nx, Ny, Nz, spacing, u_conv, dt_lbm_si);
+	// Initialize DEM coupling (two-way: particles push back on fluid)
+	dem.twoway = true;
+	dem.init(Nx, Ny, Nz, spacing, u_conv, dt_lbm_si, f_conv);
 
 	// Set global pointer for graphics thread to draw particles
 	g_dem_coupling = &dem;

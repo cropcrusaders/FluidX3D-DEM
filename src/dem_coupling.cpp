@@ -10,19 +10,25 @@
 
 DemCoupling* g_dem_coupling = nullptr;
 
-void DemCoupling::init(uint Nx_, uint Ny_, uint Nz_, float spacing_, float u_conversion_, float dt_lbm_si_) {
+void DemCoupling::init(uint Nx_, uint Ny_, uint Nz_, float spacing_, float u_conversion_, float dt_lbm_si_, float f_conversion_) {
 	Nx = Nx_;
 	Ny = Ny_;
 	Nz = Nz_;
 	spacing = spacing_;
 	u_conversion = u_conversion_;
 	dt_lbm_si = dt_lbm_si_;
+	f_conversion = f_conversion_;
 
 	// Allocate velocity buffers
 	const ulong N = (ulong)Nx * (ulong)Ny * (ulong)Nz;
 	ux_buf.resize(N, 0.0f);
 	uy_buf.resize(N, 0.0f);
 	uz_buf.resize(N, 0.0f);
+
+	// Allocate force feedback buffers for two-way coupling
+	fx_buf.resize(N, 0.0f);
+	fy_buf.resize(N, 0.0f);
+	fz_buf.resize(N, 0.0f);
 
 	// Initialize DEM airflow grid to match LBM grid
 	// LBM cell (ix,iy,iz) has centered position: (ix-Nx/2+0.5, iy-Ny/2+0.5, iz-Nz/2+0.5) * spacing
@@ -55,7 +61,9 @@ void DemCoupling::init(uint Nx_, uint Ny_, uint Nz_, float spacing_, float u_con
 
 	std::cout << "[DEM-LBM] Coupling initialized: grid=" << Nx << "x" << Ny << "x" << Nz
 	          << " spacing=" << spacing*1000.0f << " mm"
-	          << " u_conv=" << u_conversion << " m/s per lu\n";
+	          << " u_conv=" << u_conversion << " m/s per lu"
+	          << " f_conv=" << f_conversion
+	          << (twoway ? " TWO-WAY" : " ONE-WAY") << "\n";
 }
 
 void DemCoupling::step(LBM& lbm) {
@@ -75,13 +83,43 @@ void DemCoupling::step(LBM& lbm) {
 	sim.airflow.update_from_arrays(ux_buf.data(), uy_buf.data(), uz_buf.data());
 
 	// 4. Step DEM forward by one LBM timestep (multiple DEM substeps)
+	//    Accumulate drag forces from all substeps for two-way feedback
+	std::vector<dem::AirflowField::ParticleDrag> accumulated_drags;
 	int substeps = std::max(1, (int)std::ceil((double)dt_lbm_si / sim.config.dt));
 	for(int i = 0; i < substeps; i++) {
 		if(sim.is_finished()) break;
 		sim.step();
+		if(twoway) {
+			// Collect drag forces from this substep (already computed in sim.compute_forces())
+			for(const auto& d : sim.last_drag_forces) {
+				accumulated_drags.push_back(d);
+			}
+		}
 	}
 
-	// 5. Update visualization buffer
+	// 5. Two-way coupling: distribute reaction forces back to LBM force field
+#ifdef FORCE_FIELD
+	if(twoway && !accumulated_drags.empty()) {
+		// Distribute DEM drag reaction forces onto grid (SI force-per-volume)
+		sim.airflow.distribute_forces_to_grid(accumulated_drags, fx_buf.data(), fy_buf.data(), fz_buf.data());
+
+		// Scale by 1/substeps to get time-averaged force per LBM step,
+		// then convert SI force-per-volume to LBM lattice force units
+		const float scale = f_conversion / (float)substeps;
+
+		// Write force field into LBM F arrays (CPU side)
+		for(ulong n = 0ull; n < N; n++) {
+			lbm.F.x[n] = fx_buf[n] * scale;
+			lbm.F.y[n] = fy_buf[n] * scale;
+			lbm.F.z[n] = fz_buf[n] * scale;
+		}
+
+		// Upload force field to GPU
+		lbm.F.write_to_device();
+	}
+#endif // FORCE_FIELD
+
+	// 6. Update visualization buffer
 	update_vis();
 }
 
