@@ -37,6 +37,126 @@ void main_setup() { // benchmark; required extensions in defines.hpp: BENCHMARK,
 
 
 
+#if defined(DEM_COUPLING) && !defined(BENCHMARK)
+#include "info.hpp"
+void main_setup() { // Integrated DEM-LBM: particles in channel flow; required extensions: VOLUME_FORCE, DEM_COUPLING, INTERACTIVE_GRAPHICS or GRAPHICS
+	// ################################################################## define simulation box size, viscosity and volume force ###################################################################
+	const float nu = 0.01f; // kinematic viscosity
+	const float u_target = 0.05f; // target centerline velocity in lattice units
+	const float channel_R = 24.0f; // channel half-width in lattice units
+	const float fx = 2.0f*u_target*nu/sq(channel_R); // volume force for Poiseuille-like channel flow in x-direction
+	LBM lbm(128u, 64u, 64u, nu, fx, 0.0f, 0.0f); // 128x64x64 grid, volume force in x
+
+	// Unit conversion: 1 cell = 1mm, velocity 0.05 lu = 0.5 m/s
+	units.set_m_kg_s(1.0f, u_target, 1.0f, 0.001f, 0.5f, 1.225f);
+	const float spacing = units.si_x(1.0f);       // meters per cell
+	const float u_conv = units.si_u(1.0f);         // (m/s) per lattice velocity unit
+	const float dt_lbm_si = units.si_t(1ull);      // seconds per LBM timestep
+	const float f_conv = units.f(1.0f);            // SI force-per-volume to LBM units
+
+	// ###################################################################################### define LBM geometry ######################################################################################
+	const uint Nx=lbm.get_Nx(), Ny=lbm.get_Ny(), Nz=lbm.get_Nz();
+	parallel_for(lbm.get_N(), [&](ulong n) { uint x=0u, y=0u, z=0u; lbm.coordinates(n, x, y, z);
+		// Walls on y-boundaries (top and bottom of channel)
+		if(y==0u || y==Ny-1u) {
+			lbm.flags[n] = TYPE_S;
+		}
+		// Periodic in x and z (default)
+	});
+
+	// ###################################################################################### define DEM simulation ######################################################################################
+	DemCoupling dem;
+
+	// Seed type: small sphere
+	dem::SeedType seed;
+	seed.name = "seed";
+	seed.shape = dem::SeedShape::SPHERE;
+	seed.radius = 0.002; // 2mm radius
+	seed.mass = 0.0005;  // 0.5g
+	dem.sim.particles.seed_types.push_back(seed);
+
+	// Contact properties
+	dem.sim.particles.default_seed_seed.kn = 5000.0;
+	dem.sim.particles.default_seed_seed.restitution = 0.5;
+	dem.sim.particles.default_seed_seed.friction_s = 0.3;
+	dem.sim.particles.default_seed_wall.kn = 5000.0;
+	dem.sim.particles.default_seed_wall.restitution = 0.5;
+	dem.sim.particles.default_seed_wall.friction_s = 0.3;
+
+	// Gravity in -y direction (downward in the channel view)
+	dem.sim.config.gravity = dem::vec3(0.0, -9.81, 0.0);
+	dem.sim.config.max_time = 1000.0; // run for a long time
+	dem.sim.config.output_interval = 500;
+	dem.sim.config.save_trajectories = false;
+
+	// Airflow config
+	dem.sim.config.enable_airflow = true;
+	dem.sim.config.air_density = 1.225;
+	dem.sim.config.use_schiller_naumann = true;
+	dem.sim.config.auto_dt = true;
+	dem.sim.config.dt_safety = 0.1;
+
+	// DEM geometry: wall planes matching LBM channel walls
+	// Wall at y_min: plane at y = (-Ny/2 + 0.5) * spacing, normal = (0,+1,0)
+	dem::AnalyticPrimitive wall_bottom;
+	wall_bottom.type = dem::PrimitiveType::PLANE;
+	wall_bottom.plane_normal = dem::vec3(0.0, 1.0, 0.0);
+	wall_bottom.plane_offset = (-(double)Ny/2.0 + 0.5) * (double)spacing;
+	dem.sim.geometry.add_primitive(wall_bottom);
+
+	// Wall at y_max: plane at y = (Ny/2 - 0.5) * spacing, normal = (0,-1,0)
+	dem::AnalyticPrimitive wall_top;
+	wall_top.type = dem::PrimitiveType::PLANE;
+	wall_top.plane_normal = dem::vec3(0.0, -1.0, 0.0);
+	wall_top.plane_offset = ((double)Ny/2.0 - 0.5) * (double)spacing;
+	dem.sim.geometry.add_primitive(wall_top);
+
+	// Injector: releases seeds from left side of channel
+	dem.sim.injector.config.position = dem::vec3(
+		(-(double)Nx/2.0 + 10.0) * (double)spacing,  // near left edge
+		0.0,                                            // center y
+		0.0                                             // center z
+	);
+	dem.sim.injector.config.direction = dem::vec3(1.0, 0.0, 0.0); // inject in +x
+	dem.sim.injector.config.initial_speed = 0.3;   // m/s initial speed
+	dem.sim.injector.config.speed_stddev = 0.05;
+	dem.sim.injector.config.lateral_speed_stddev = 0.05;
+	dem.sim.injector.config.seeds_per_second = 30.0;
+	dem.sim.injector.config.max_seeds = 500;
+	dem.sim.injector.config.aperture = dem::ApertureShape::CIRCULAR;
+	dem.sim.injector.config.aperture_radius = 0.01; // 10mm aperture
+	dem.sim.injector.config.seed_type_idx = 0;
+
+	// Exit plane: far right of domain
+	dem.sim.exit_plane.point = dem::vec3(
+		((double)Nx/2.0 - 2.0) * (double)spacing, 0.0, 0.0
+	);
+	dem.sim.exit_plane.normal = dem::vec3(-1.0, 0.0, 0.0); // particles exit when crossing in +x direction
+
+	// Initialize DEM coupling (two-way: particles push back on fluid)
+	dem.twoway = true;
+	dem.init(Nx, Ny, Nz, spacing, u_conv, dt_lbm_si, f_conv);
+
+	// Set global pointer for graphics thread to draw particles
+	g_dem_coupling = &dem;
+
+	// ####################################################################### run simulation, export images and data ##########################################################################
+	lbm.graphics.visualization_modes = VIS_FLAG_LATTICE|VIS_FIELD;
+
+	// Coupled simulation loop: alternate LBM and DEM steps
+	const uint coupling_interval = 10u; // DEM coupling every N LBM steps
+	while(running) {
+		lbm.run(coupling_interval); // run N LBM steps (handles initialization, graphics, pause)
+		if(!running) break;
+		dem.step(lbm); // transfer velocity to DEM, step DEM forward
+	}
+
+	g_dem_coupling = nullptr;
+} /**/
+#endif // DEM_COUPLING && !BENCHMARK
+
+
+
 /*void main_setup() { // 3D Taylor-Green vortices; required extensions in defines.hpp: INTERACTIVE_GRAPHICS
 	// ################################################################## define simulation box size, viscosity and volume force ###################################################################
 	LBM lbm(128u, 128u, 128u, 1u, 1u, 1u, 0.01f);

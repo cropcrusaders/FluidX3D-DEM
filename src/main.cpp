@@ -1,6 +1,9 @@
 #include "info.hpp"
 #include "lbm.hpp"
 #include "setup.hpp"
+#ifdef DEM_COUPLING
+#include "dem_coupling.hpp"
+#endif // DEM_COUPLING
 
 #ifdef GRAPHICS
 void draw_scale(const int field_mode, const int color) {
@@ -139,7 +142,12 @@ void main_label(const double frametime) {
 }
 
 void main_graphics() {
-	if(camera.allow_rendering) draw_bitmap(info.lbm->graphics.draw_frame());
+	if(camera.allow_rendering) {
+		draw_bitmap(info.lbm->graphics.draw_frame());
+#ifdef DEM_COUPLING
+		if(g_dem_coupling) g_dem_coupling->draw_particles(); // draw DEM particles on top of LBM frame
+#endif // DEM_COUPLING
+	}
 }
 #endif // GRAPHICS
 
