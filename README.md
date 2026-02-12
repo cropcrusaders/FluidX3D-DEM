@@ -1,4 +1,80 @@
-# FluidX3D
+# FluidX3D-DEM
+
+**Integrated two-way coupled fluid-particle simulation** combining GPU-accelerated lattice Boltzmann CFD (FluidX3D) with Discrete Element Method particle dynamics (DEM) in a single executable with live visualization.
+
+<p align="center"><img src="docs/dem-lbm-coupling.svg" width="100%"></p>
+
+## Two-Way Coupled DEM-LBM Simulation
+
+This fork extends FluidX3D with a built-in DEM particle simulator that runs **live alongside the fluid solver** -- not as a separate process, not file-based, but fully coupled in one simulation loop with combined rendering.
+
+```
+ FluidX3D (GPU, OpenCL)                        DEM (CPU)
+ ========================                       ========================
+
+ LBM collision + streaming                      Particle injection
+        |                                              |
+        v                                              v
+  Velocity field u(x,t) ─── GPU->CPU transfer ──> Trilinear interpolation
+        |                                              |
+        |                                         Drag force Fd
+        |                                         (Schiller-Naumann)
+        |                                              |
+        |                                         Contact forces
+        |                                         (spring-dashpot)
+        |                                              |
+        |                                         Gravity + integrate
+        |                                              |
+  Force field F(x,t)  <── CPU->GPU transfer ──── Reaction force -Fd
+  (Guo forcing scheme)     (Newton's 3rd law)    (trilinear distribution)
+        |                                              |
+        v                                              v
+  Next LBM timestep                             Particle rendering
+        |                                         (overlay on fluid)
+        v                                              |
+  Combined frame ──────────────────────────────────────┘
+```
+
+**Particles affect the fluid and the fluid affects particles -- fully live, fully coupled, single executable.**
+
+### Quick Start (DEM-LBM)
+
+```bash
+# Build (requires OpenCL runtime -- any GPU or CPU OpenCL)
+make Linux -j$(nproc)         # Linux headless (writes frames to disk)
+make Linux-X11 -j$(nproc)    # Linux with interactive window
+
+# Run
+./bin/FluidX3D
+```
+
+The default setup runs a **128x64x64 channel flow** with volume-force-driven Poiseuille flow and DEM seed particles injected from the left. Particles experience:
+- Fluid drag (Schiller-Naumann correlation) from the LBM velocity field
+- Gravity
+- Wall collisions (spring-dashpot contact model)
+- Seed-seed collisions
+
+And the fluid experiences reaction forces from every particle via the `FORCE_FIELD` extension.
+
+### Configuration
+
+Two-way coupling is controlled in `src/setup.cpp`:
+
+```cpp
+DemCoupling dem;
+dem.twoway = true;   // set false for one-way (fluid pushes particles only)
+dem.init(Nx, Ny, Nz, spacing, u_conv, dt_lbm_si, f_conv);
+```
+
+Compile-time flags in `src/defines.hpp`:
+- `DEM_COUPLING` -- enable the integrated DEM module
+- `FORCE_FIELD` -- required for two-way coupling (per-cell force arrays on GPU)
+- `VOLUME_FORCE` -- required for global body force (channel flow drive)
+- `GRAPHICS` or `INTERACTIVE_GRAPHICS` -- enable visualization
+
+---
+
+## FluidX3D
 
 The fastest and most memory efficient lattice Boltzmann CFD software, running on all GPUs and CPUs via [OpenCL](https://github.com/ProjectPhysX/OpenCL-Wrapper "OpenCL-Wrapper"). Free for non-commercial use.
 
