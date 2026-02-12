@@ -4,9 +4,19 @@
 
 <p align="center"><img src="docs/dem-lbm-coupling.svg" width="100%"></p>
 
-## Two-Way Coupled DEM-LBM Simulation
+This repo has **three ways to use it**:
 
-This fork extends FluidX3D with a built-in DEM particle simulator that runs **live alongside the fluid solver** -- not as a separate process, not file-based, but fully coupled in one simulation loop with combined rendering.
+| Mode | What it does | Build |
+|------|-------------|-------|
+| [Integrated DEM-LBM](#1-integrated-dem-lbm-coupled-simulation) | Fluid + particles together, two-way coupled, single executable | `make Linux` |
+| [Standalone DEM](#2-standalone-dem-particle-simulator) | Particle-only simulation (no fluid, or load a saved velocity field) | `cd dem && cmake .. && make` |
+| [Standalone FluidX3D](#3-standalone-fluidx3d-cfd) | Fluid-only CFD (original FluidX3D, no particles) | `make Linux` (disable `DEM_COUPLING`) |
+
+---
+
+## 1. Integrated DEM-LBM (Coupled Simulation)
+
+Both solvers run together live in one process. The LBM fluid solver runs on GPU (OpenCL), the DEM particle solver runs on CPU, and they exchange data every coupling interval.
 
 ```
  FluidX3D (GPU, OpenCL)                        DEM (CPU)
@@ -35,42 +45,244 @@ This fork extends FluidX3D with a built-in DEM particle simulator that runs **li
   Combined frame ──────────────────────────────────────┘
 ```
 
-**Particles affect the fluid and the fluid affects particles -- fully live, fully coupled, single executable.**
+### Prerequisites
 
-### Quick Start (DEM-LBM)
+- C++17 compiler (`g++ 8+`)
+- OpenCL runtime (any GPU driver with OpenCL, or CPU OpenCL -- see [DOCUMENTATION.md](DOCUMENTATION.md) for install instructions)
+- Linux with X11 for interactive window mode, or headless `GRAPHICS` mode for writing frames to disk
+
+### Build
 
 ```bash
-# Build (requires OpenCL runtime -- any GPU or CPU OpenCL)
-make Linux -j$(nproc)         # Linux headless (writes frames to disk)
-make Linux-X11 -j$(nproc)    # Linux with interactive window
+# Linux with interactive window (requires X11)
+make Linux-X11 -j$(nproc)
 
-# Run
+# Linux headless (writes rendered frames to bin/export/)
+make Linux -j$(nproc)
+
+# macOS
+make macOS -j$(nproc)
+```
+
+### Run
+
+```bash
+./bin/FluidX3D          # runs the default DEM-LBM channel flow setup
+./bin/FluidX3D 0        # select GPU device 0
+./bin/FluidX3D 0 1      # multi-GPU (if setup uses domain decomposition)
+```
+
+With `INTERACTIVE_GRAPHICS`: press <kbd>P</kbd> to start/pause, <kbd>H</kbd> for help overlay.
+With `GRAPHICS` (headless): frames auto-export to `bin/export/` as PNG.
+
+### What the Default Setup Does
+
+The built-in demo (`src/setup.cpp`) runs a **128x64x64 channel flow**:
+
+- **Fluid**: Poiseuille-like flow driven by volume force in x-direction, walls on y-boundaries, periodic in x and z
+- **Particles**: 2mm radius spheres (0.5g) injected at 30/sec from the left side
+- **Physics**: Schiller-Naumann drag, gravity in -y, spring-dashpot contacts, seed-seed and seed-wall collisions
+- **Coupling**: Two-way -- particles feel fluid drag, fluid feels particle reaction forces
+
+### Customizing the Setup
+
+All simulation configuration is in `src/setup.cpp`. Edit the `main_setup()` function under `#if defined(DEM_COUPLING)`:
+
+```cpp
+// --- Grid and fluid ---
+LBM lbm(128u, 64u, 64u, nu, fx, 0.0f, 0.0f);  // grid size, viscosity, volume force
+units.set_m_kg_s(1.0f, u_target, 1.0f, 0.001f, 0.5f, 1.225f);  // unit conversion
+
+// --- Particle properties ---
+dem::SeedType seed;
+seed.shape = dem::SeedShape::SPHERE;   // or ELLIPSOID, MULTI_SPHERE_ELLIPSOID
+seed.radius = 0.002;                   // meters
+seed.mass = 0.0005;                    // kg
+dem.sim.particles.seed_types.push_back(seed);
+
+// --- Contact model ---
+dem.sim.particles.default_seed_seed.kn = 5000.0;         // normal spring stiffness (N/m)
+dem.sim.particles.default_seed_seed.restitution = 0.5;    // coefficient of restitution
+dem.sim.particles.default_seed_seed.friction_s = 0.3;     // static friction
+
+// --- Gravity ---
+dem.sim.config.gravity = dem::vec3(0.0, -9.81, 0.0);  // m/s^2
+
+// --- Particle injection ---
+dem.sim.injector.config.position = dem::vec3(x, y, z);    // meters (SI)
+dem.sim.injector.config.seeds_per_second = 30.0;
+dem.sim.injector.config.max_seeds = 500;
+
+// --- Coupling mode ---
+dem.twoway = true;    // true = particles push back on fluid
+                      // false = one-way (fluid pushes particles only)
+```
+
+### Compile-Time Flags (`src/defines.hpp`)
+
+| Flag | Required for | Purpose |
+|------|-------------|---------|
+| `DEM_COUPLING` | integrated mode | Enables the DEM module in the build |
+| `VOLUME_FORCE` | channel flow | Global body force (pressure gradient) |
+| `FORCE_FIELD` | two-way coupling | Per-cell force arrays on GPU (+12 bytes/cell) |
+| `GRAPHICS` | headless vis | Renders frames to disk |
+| `INTERACTIVE_GRAPHICS` | window vis | Live interactive window (needs X11 on Linux) |
+
+After changing flags, rebuild with `make clean && make Linux -j$(nproc)`.
+
+---
+
+## 2. Standalone DEM (Particle Simulator)
+
+The DEM module can also run independently without FluidX3D, for particle-only simulations or loading pre-computed velocity fields from file.
+
+### Build
+
+```bash
+cd dem
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+```
+
+Produces:
+- `dem_sim` -- simulation CLI
+- `dem_tests` -- unit tests (14 tests, 60 checks)
+
+No external C++ dependencies required. OpenMP auto-detected for parallel speedup.
+
+### Run
+
+```bash
+# Run with a config file
+./dem_sim ../examples/straight_tube.json
+./dem_sim ../examples/curved_tube.json
+./dem_sim ../examples/spiral_tube.json
+
+# Override parameters from command line
+./dem_sim config.json --output-dir results/ --dt 1e-5 --max-time 2.0 --seed 12345 --quiet
+```
+
+### Config File Format (JSON)
+
+All DEM configuration is runtime via JSON files. See `dem/examples/` for complete templates. Key sections:
+
+```jsonc
+{
+  "simulation": {
+    "dt": 1e-5,              // timestep (seconds), or use "auto_dt": true
+    "max_time": 2.0,         // simulation duration (seconds)
+    "gravity": [0, 0, -9.81],// m/s^2
+    "rng_seed": 12345,       // for reproducibility
+    "output_dir": "output/straight_tube",
+    "save_trajectories": true // write particle paths to VTK/CSV
+  },
+  "seed_types": [{
+    "name": "cotton",
+    "shape": "sphere",       // "sphere" or "ellipsoid"
+    "radius": 0.004,         // meters
+    "mass": 0.0008           // kg
+  }],
+  "contact": {
+    "seed_seed": { "kn": 10000, "restitution": 0.45, "friction_s": 0.5 },
+    "seed_wall": { "kn": 15000, "restitution": 0.35, "friction_s": 0.4 }
+  },
+  "geometry": {
+    "primitives": [{
+      "type": "cylinder",
+      "center": [0, 0, 0.15],
+      "axis": [0, 0, 1],
+      "radius": 0.025,
+      "height": 0.3
+    }]
+  },
+  "injector": {
+    "position": [0, 0, 0.295],
+    "direction": [0, 0, -1],
+    "seeds_per_second": 50,
+    "max_seeds": 500,
+    "initial_speed": 0.5,
+    "aperture": "circular",
+    "aperture_radius": 0.015
+  },
+  "airflow": {
+    "enabled": false          // set true + provide velocity field file for one-way coupling
+  }
+}
+```
+
+### Output Files
+
+| File | Content |
+|------|---------|
+| `seeds.csv` | Per-seed metrics: exit time, wall hits, exit velocity, cumulative impulse |
+| `summary.csv` | Aggregate statistics: mean/std exit time, spacing risk proxy |
+| `trajectories.vtk` | 3D particle paths (viewable in ParaView) |
+| `trajectories.csv` | Particle paths as CSV time series |
+
+### Postprocessing
+
+```bash
+# Plot results (requires matplotlib)
+python dem/python/dem_postprocess.py output/straight_tube
+
+# Compare multiple runs
+python dem/python/dem_postprocess.py output/straight_tube --compare output/curved_tube output/spiral_tube
+```
+
+### Run Tests
+
+```bash
+cd dem/build
+./dem_tests     # 14 tests, 60 checks
+ctest           # or via CTest
+```
+
+---
+
+## 3. Standalone FluidX3D (CFD)
+
+To use FluidX3D without DEM particles (original behavior), comment out `DEM_COUPLING` in `src/defines.hpp`:
+
+```cpp
+//#define DEM_COUPLING
+```
+
+Then uncomment one of the sample setups in `src/setup.cpp` and set the required extensions in `src/defines.hpp`.
+
+```bash
+make clean && make Linux -j$(nproc)
 ./bin/FluidX3D
 ```
 
-The default setup runs a **128x64x64 channel flow** with volume-force-driven Poiseuille flow and DEM seed particles injected from the left. Particles experience:
-- Fluid drag (Schiller-Naumann correlation) from the LBM velocity field
-- Gravity
-- Wall collisions (spring-dashpot contact model)
-- Seed-seed collisions
+For full FluidX3D documentation including unit conversion, boundary conditions, geometry import, and video rendering, see [DOCUMENTATION.md](DOCUMENTATION.md).
 
-And the fluid experiences reaction forces from every particle via the `FORCE_FIELD` extension.
+---
 
-### Configuration
+## Repository Structure
 
-Two-way coupling is controlled in `src/setup.cpp`:
-
-```cpp
-DemCoupling dem;
-dem.twoway = true;   // set false for one-way (fluid pushes particles only)
-dem.init(Nx, Ny, Nz, spacing, u_conv, dt_lbm_si, f_conv);
 ```
-
-Compile-time flags in `src/defines.hpp`:
-- `DEM_COUPLING` -- enable the integrated DEM module
-- `FORCE_FIELD` -- required for two-way coupling (per-cell force arrays on GPU)
-- `VOLUME_FORCE` -- required for global body force (channel flow drive)
-- `GRAPHICS` or `INTERACTIVE_GRAPHICS` -- enable visualization
+FluidX3D-DEM/
+├── src/                          # FluidX3D + coupling layer (C++17, OpenCL)
+│   ├── main.cpp                  # Entry point
+│   ├── setup.cpp                 # Simulation setups (DEM-LBM demo + FluidX3D samples)
+│   ├── dem_coupling.hpp/cpp      # DEM-LBM integration layer
+│   ├── defines.hpp               # Compile-time feature flags
+│   ├── lbm.hpp/cpp               # LBM solver, GPU memory, multi-GPU
+│   ├── units.hpp                 # SI unit conversion
+│   └── ...                       # graphics, kernels, shapes, OpenCL wrapper
+├── dem/                          # Standalone DEM module (C++17, CMake)
+│   ├── src/                      # Implementation files
+│   ├── include/                  # Headers (simulator, particle, collision, etc.)
+│   ├── tests/test_main.cpp       # Unit tests
+│   ├── examples/                 # JSON config templates (6 configs)
+│   └── python/dem_postprocess.py # Matplotlib visualization
+├── docs/                         # Architecture diagrams
+├── makefile                      # GNU Make for FluidX3D + DEM
+├── make.sh                       # Platform-detection build script
+├── DOCUMENTATION.md              # FluidX3D getting started guide
+└── CLAUDE.md                     # AI assistant instructions
+```
 
 ---
 
